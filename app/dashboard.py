@@ -258,14 +258,23 @@ all_districts = sorted(history["district"].unique())
 # ── zone_map also from ZONE_MASTER — never from DB ───────────────────────────
 zone_map = {d: ZONE_MASTER.get(d, "inland") for d in all_districts}
 
-# ── SESSION STATE INIT ────────────────────────────────────────────────────────
+# ── SESSION STATE INIT — persists district across refresh via query_params ────
 if "app_initialized" not in st.session_state:
     st.session_state.app_initialized = True
-    st.session_state.sel         = None
-    st.session_state.map_center  = DEFAULT_CENTER
-    st.session_state.map_zoom    = DEFAULT_ZOOM
+    # Restore district from URL ?district=Bharuch (survives F5 refresh)
+    qp = st.query_params.get("district", None)
+    restored = qp if qp and qp in all_districts else None
+    st.session_state.sel         = restored
+    st.session_state.map_center  = list(COORDS.get(restored, DEFAULT_CENTER)) if restored else DEFAULT_CENTER
+    st.session_state.map_zoom    = 10 if restored else DEFAULT_ZOOM
     st.session_state.active_zone = None
     st.session_state.t5          = 0
+
+# Keep URL in sync with selected district so refresh restores it
+if st.session_state.sel:
+    st.query_params["district"] = st.session_state.sel
+else:
+    st.query_params.clear()
 
 sel_for_data = st.session_state.sel if st.session_state.sel else all_districts[0]
 
@@ -286,6 +295,7 @@ with st.sidebar:
         if st.button("🔄 Reset to Default View", key="reset_btn", use_container_width=True):
             for _k in ["app_initialized","sel","map_center","map_zoom","active_zone","t5"]:
                 st.session_state.pop(_k, None)
+            st.query_params.clear()
             st.rerun()
         st.markdown("</div>", unsafe_allow_html=True)
 
@@ -805,16 +815,22 @@ with tab4:
         ib=(i==best_idx); icon,clr_m=icons_m.get(row["model"],("📊",T["accent"]))
         mape_val=f"{row['mape']:.1f}%" if "mape" in row and not pd.isna(row.get("mape",None)) else "—"
         acc_pct=round(row["r2"]*100,1)
+        # ── FIX: Build HTML with string concatenation — avoids f-string brace conflicts ──
+        mc_class   = "mc best" if ib else "mc"
+        best_badge = "<div class='best-tag'>★ BEST</div>" if ib else ""
+        mc_html = (
+            f"<div class='{mc_class}'>"
+            + best_badge
+            + f"<div class='mc-icon'>{icon}</div>"
+            + f"<div class='mc-name' style='color:{clr_m}'>{row['model']}</div>"
+            + f"<div class='mc-r2' style='color:{clr_m}'>{acc_pct}%</div>"
+            + f"<div style='font-size:.62rem;color:{T['text_sec']};margin-bottom:.3rem'>R² = {row['r2']:.3f}</div>"
+            + f"<div class='gauge'><div class='gfill' style='width:{acc_pct}%;background:{clr_m}'></div></div>"
+            + f"<div class='mc-meta'>MAE: <b>{row['mae']:.2f}</b> &nbsp;|&nbsp; RMSE: <b>{row['rmse']:.2f}</b><br>MAPE: <b>{mape_val}</b></div>"
+            + "</div>"
+        )
         with mc_cols[i]:
-            st.markdown(f"""<div class='mc {"best" if ib else ""}'>
-              {"<div class='best-tag'>★ BEST</div>" if ib else ""}
-              <div class='mc-icon'>{icon}</div>
-              <div class='mc-name' style='color:{clr_m}'>{row["model"]}</div>
-              <div class='mc-r2' style='color:{clr_m}'>{acc_pct}%</div>
-              <div style='font-size:.62rem;color:{T["text_sec"]};margin-bottom:.3rem'>R² = {row["r2"]:.3f}</div>
-              <div class='gauge'><div class='gfill' style='width:{acc_pct}%;background:{clr_m}'></div></div>
-              <div class='mc-meta'>MAE: <b>{row["mae"]:.2f}</b> &nbsp;|&nbsp; RMSE: <b>{row["rmse"]:.2f}</b><br>MAPE: <b>{mape_val}</b></div>
-            </div>""", unsafe_allow_html=True)
+            st.markdown(mc_html, unsafe_allow_html=True)
 
     ch1,ch2=st.columns(2)
     with ch1:
