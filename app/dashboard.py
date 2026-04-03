@@ -258,19 +258,32 @@ all_districts = sorted(history["district"].unique())
 # ── zone_map also from ZONE_MASTER — never from DB ───────────────────────────
 zone_map = {d: ZONE_MASTER.get(d, "inland") for d in all_districts}
 
-# ── SESSION STATE INIT — persists district across refresh via query_params ────
-if "app_initialized" not in st.session_state:
-    st.session_state.app_initialized = True
-    # Restore district from URL ?district=Bharuch (survives F5 refresh)
-    qp = st.query_params.get("district", None)
-    restored = qp if qp and qp in all_districts else None
-    st.session_state.sel         = restored
-    st.session_state.map_center  = list(COORDS.get(restored, DEFAULT_CENTER)) if restored else DEFAULT_CENTER
-    st.session_state.map_zoom    = 10 if restored else DEFAULT_ZOOM
-    st.session_state.active_zone = None
-    st.session_state.t5          = 0
+# ── SESSION STATE INIT ───────────────────────────────────────────────────────
+# Always read query_params first — this is the only thing that survives F5
+# session_state dies on refresh on Streamlit Cloud; query_params in the URL do not
 
-# Keep URL in sync with selected district so refresh restores it
+qp_district = st.query_params.get("district", None)
+qp_district = qp_district if qp_district and qp_district in all_districts else None
+
+# Set defaults only if keys are missing (first load or after reset)
+if "sel" not in st.session_state:
+    st.session_state.sel = qp_district  # restore from URL if available
+if "map_center" not in st.session_state:
+    st.session_state.map_center = list(COORDS.get(qp_district, DEFAULT_CENTER)) if qp_district else DEFAULT_CENTER
+if "map_zoom" not in st.session_state:
+    st.session_state.map_zoom = 10 if qp_district else DEFAULT_ZOOM
+if "active_zone" not in st.session_state:
+    st.session_state.active_zone = None
+if "t5" not in st.session_state:
+    st.session_state.t5 = 0
+
+# If URL has a district but session lost it (e.g. after cloud rerun), restore it
+if qp_district and st.session_state.sel != qp_district:
+    st.session_state.sel        = qp_district
+    st.session_state.map_center = list(COORDS.get(qp_district, DEFAULT_CENTER))
+    st.session_state.map_zoom   = 10
+
+# Always keep URL in sync with current selection
 if st.session_state.sel:
     st.query_params["district"] = st.session_state.sel
 else:
@@ -293,7 +306,7 @@ with st.sidebar:
     with st.container():
         st.markdown("<div class='reset-btn'>", unsafe_allow_html=True)
         if st.button("🔄 Reset to Default View", key="reset_btn", use_container_width=True):
-            for _k in ["app_initialized","sel","map_center","map_zoom","active_zone","t5"]:
+            for _k in ["sel","map_center","map_zoom","active_zone","t5"]:
                 st.session_state.pop(_k, None)
             st.query_params.clear()
             st.rerun()
