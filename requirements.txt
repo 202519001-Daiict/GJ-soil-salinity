@@ -1,0 +1,13 @@
+streamlit
+pandas
+numpy
+matplotlib
+folium
+streamlit-folium
+scikit-learn
+xgboost
+requests
+sqlalchemy
+pytorch-forecasting
+pytorch-lightning
+torch
