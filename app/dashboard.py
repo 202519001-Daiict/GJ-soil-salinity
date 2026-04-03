@@ -259,12 +259,36 @@ all_districts = sorted(history["district"].unique())
 zone_map = {d: ZONE_MASTER.get(d, "inland") for d in all_districts}
 
 # ── SESSION STATE INIT ───────────────────────────────────────────────────────
-# Fresh start on every page refresh — no district is remembered
-if "sel"         not in st.session_state: st.session_state.sel         = None
-if "map_center"  not in st.session_state: st.session_state.map_center  = DEFAULT_CENTER
-if "map_zoom"    not in st.session_state: st.session_state.map_zoom    = DEFAULT_ZOOM
-if "active_zone" not in st.session_state: st.session_state.active_zone = None
-if "t5"          not in st.session_state: st.session_state.t5          = 0
+# Detect true page refresh using a run counter stored in query_params.
+# Every Streamlit rerun increments _run_id in session_state.
+# On a real F5 refresh, session_state is wiped but query_params may persist —
+# we use a one-time token to detect fresh browser loads.
+
+import time as _time
+
+# Generate a unique session token on first load of this session
+if "session_token" not in st.session_state:
+    # Brand new session (real refresh or first visit) — reset everything
+    st.session_state.session_token = str(_time.time())
+    st.session_state.sel         = None
+    st.session_state.map_center  = DEFAULT_CENTER
+    st.session_state.map_zoom    = DEFAULT_ZOOM
+    st.session_state.active_zone = None
+    st.session_state.t5          = 0
+    # Store token in query_params so we can detect same-session reruns
+    st.query_params["_st"] = st.session_state.session_token
+else:
+    # Check if the URL token matches session token
+    url_token = st.query_params.get("_st", None)
+    if url_token != st.session_state.session_token:
+        # Token mismatch = real page refresh → reset all
+        st.session_state.session_token = str(_time.time())
+        st.session_state.sel         = None
+        st.session_state.map_center  = DEFAULT_CENTER
+        st.session_state.map_zoom    = DEFAULT_ZOOM
+        st.session_state.active_zone = None
+        st.session_state.t5          = 0
+        st.query_params["_st"] = st.session_state.session_token
 
 sel_for_data = st.session_state.sel if st.session_state.sel else all_districts[0]
 
