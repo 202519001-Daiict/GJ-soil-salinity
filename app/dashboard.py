@@ -259,35 +259,22 @@ all_districts = sorted(history["district"].unique())
 zone_map = {d: ZONE_MASTER.get(d, "inland") for d in all_districts}
 
 # ── SESSION STATE INIT ───────────────────────────────────────────────────────
-# On Streamlit Cloud, session_state persists across F5.
-# We detect a true browser refresh by comparing a run-ID stored in
-# st.session_state against one stored in the browser via st.components.
-# Simpler approach: use a hidden number_input as a page-load counter.
-# Each F5 resets the widget value to 0 (its default), while reruns keep it > 0.
+if "sel"         not in st.session_state: st.session_state.sel         = None
+if "map_center"  not in st.session_state: st.session_state.map_center  = DEFAULT_CENTER
+if "map_zoom"    not in st.session_state: st.session_state.map_zoom    = DEFAULT_ZOOM
+if "active_zone" not in st.session_state: st.session_state.active_zone = None
+if "t5"          not in st.session_state: st.session_state.t5          = 0
 
-import streamlit.components.v1 as _components
+# Restore district from URL param — survives F5 refresh
+_qp = st.query_params.get("district", None)
+if _qp and _qp in all_districts:
+    st.session_state.sel        = _qp
+    st.session_state.map_center = list(COORDS.get(_qp, DEFAULT_CENTER))
+    st.session_state.map_zoom   = 10
 
-# Inject a tiny JS snippet that sets a flag in the Streamlit query_params
-# telling us this is a genuine new browser page load (not an internal rerun)
-_nav_id = st.query_params.get("_nav", "0")
-
-# On every genuine page load the browser sends no _nav param
-# On reruns triggered by Streamlit, _nav is already set
-if _nav_id == "0":
-    # True fresh load — reset district selection
-    st.session_state.sel         = None
-    st.session_state.map_center  = DEFAULT_CENTER
-    st.session_state.map_zoom    = DEFAULT_ZOOM
-    st.session_state.active_zone = None
-    st.session_state.t5          = 0
-    st.query_params["_nav"] = "1"   # mark as initialized for this session
-else:
-    # Rerun within same session — only set if missing
-    if "sel"         not in st.session_state: st.session_state.sel         = None
-    if "map_center"  not in st.session_state: st.session_state.map_center  = DEFAULT_CENTER
-    if "map_zoom"    not in st.session_state: st.session_state.map_zoom    = DEFAULT_ZOOM
-    if "active_zone" not in st.session_state: st.session_state.active_zone = None
-    if "t5"          not in st.session_state: st.session_state.t5          = 0
+# Keep URL in sync whenever district is selected
+if st.session_state.sel:
+    st.query_params["district"] = st.session_state.sel
 
 sel_for_data = st.session_state.sel if st.session_state.sel else all_districts[0]
 
@@ -374,11 +361,13 @@ with st.sidebar:
             st.session_state.sel        = chosen
             st.session_state.map_center = list(COORDS.get(chosen, [22.5,71.5]))
             st.session_state.map_zoom   = 10
+            st.query_params["district"] = chosen
             st.rerun()
         elif chosen == "— Select a district —" and st.session_state.sel is not None:
             st.session_state.sel        = None
             st.session_state.map_center = DEFAULT_CENTER
             st.session_state.map_zoom   = DEFAULT_ZOOM
+            st.query_params.clear()
             st.rerun()
 
     st.markdown(f"<hr style='border-color:{T['border']};margin:.6rem 0'>", unsafe_allow_html=True)
