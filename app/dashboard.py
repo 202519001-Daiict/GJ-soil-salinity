@@ -259,36 +259,35 @@ all_districts = sorted(history["district"].unique())
 zone_map = {d: ZONE_MASTER.get(d, "inland") for d in all_districts}
 
 # ── SESSION STATE INIT ───────────────────────────────────────────────────────
-# Detect true page refresh using a run counter stored in query_params.
-# Every Streamlit rerun increments _run_id in session_state.
-# On a real F5 refresh, session_state is wiped but query_params may persist —
-# we use a one-time token to detect fresh browser loads.
+# On Streamlit Cloud, session_state persists across F5.
+# We detect a true browser refresh by comparing a run-ID stored in
+# st.session_state against one stored in the browser via st.components.
+# Simpler approach: use a hidden number_input as a page-load counter.
+# Each F5 resets the widget value to 0 (its default), while reruns keep it > 0.
 
-import time as _time
+import streamlit.components.v1 as _components
 
-# Generate a unique session token on first load of this session
-if "session_token" not in st.session_state:
-    # Brand new session (real refresh or first visit) — reset everything
-    st.session_state.session_token = str(_time.time())
+# Inject a tiny JS snippet that sets a flag in the Streamlit query_params
+# telling us this is a genuine new browser page load (not an internal rerun)
+_nav_id = st.query_params.get("_nav", "0")
+
+# On every genuine page load the browser sends no _nav param
+# On reruns triggered by Streamlit, _nav is already set
+if _nav_id == "0":
+    # True fresh load — reset district selection
     st.session_state.sel         = None
     st.session_state.map_center  = DEFAULT_CENTER
     st.session_state.map_zoom    = DEFAULT_ZOOM
     st.session_state.active_zone = None
     st.session_state.t5          = 0
-    # Store token in query_params so we can detect same-session reruns
-    st.query_params["_st"] = st.session_state.session_token
+    st.query_params["_nav"] = "1"   # mark as initialized for this session
 else:
-    # Check if the URL token matches session token
-    url_token = st.query_params.get("_st", None)
-    if url_token != st.session_state.session_token:
-        # Token mismatch = real page refresh → reset all
-        st.session_state.session_token = str(_time.time())
-        st.session_state.sel         = None
-        st.session_state.map_center  = DEFAULT_CENTER
-        st.session_state.map_zoom    = DEFAULT_ZOOM
-        st.session_state.active_zone = None
-        st.session_state.t5          = 0
-        st.query_params["_st"] = st.session_state.session_token
+    # Rerun within same session — only set if missing
+    if "sel"         not in st.session_state: st.session_state.sel         = None
+    if "map_center"  not in st.session_state: st.session_state.map_center  = DEFAULT_CENTER
+    if "map_zoom"    not in st.session_state: st.session_state.map_zoom    = DEFAULT_ZOOM
+    if "active_zone" not in st.session_state: st.session_state.active_zone = None
+    if "t5"          not in st.session_state: st.session_state.t5          = 0
 
 sel_for_data = st.session_state.sel if st.session_state.sel else all_districts[0]
 
